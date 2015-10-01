@@ -10,7 +10,7 @@
 
 #define THREAD_START 0
 #define THREAD_FINISHED 1
-#define ARRAY_SIZE 100000
+#define ARRAY_SIZE 1000000
 
 @interface SortVC ()
 
@@ -19,6 +19,8 @@
 @implementation SortVC {
     NSMutableArray *unsortedArray;
     NSConditionLock *threadLock;
+    NSDate *mergeStart, *quickStart;
+    double mergeTime, quickTime;
 }
 
 - (void)loadView {
@@ -26,20 +28,53 @@
     [super loadView];
     self.title = @"Sort Time Comparisons";
     self.view.backgroundColor = [UIColor whiteColor];
+    [self initUnsortedArray];
     
+    threadLock = [[NSConditionLock alloc] initWithCondition:THREAD_START];
+    NSThread *quickSortThread = [[NSThread alloc] initWithTarget:self selector:@selector(initQuickSort) object:nil];
+    [quickSortThread start];
+    
+    // Initializing Merge Sort
     [self initMergeSort];
+    
+    [threadLock lockWhenCondition:THREAD_FINISHED];
+    [threadLock unlockWithCondition:THREAD_FINISHED];
+    
+    UILabel *label = [UILabel new];
+    label.frame = self.view.bounds;
+    label.text = [NSString stringWithFormat:@"Merge Sort Time: %.3fs.\nQuick Sort Time: %.3fs.", mergeTime, quickTime];
+    label.textAlignment = NSTextAlignmentCenter;
+    label.numberOfLines = 0;
+    label.font = [UIFont boldSystemFontOfSize:28];
+    
+    [self.view addSubview:label];
+}
+
+- (void)initQuickSort {
+    [threadLock lock];
+    quickStart = [NSDate date];
+    NSMutableArray *sortedQSArray = [self quickSort:unsortedArray];
+    quickTime = [[NSDate date] timeIntervalSinceDate:quickStart];
+    assert([sortedQSArray count] == ARRAY_SIZE);
+    [threadLock unlockWithCondition:THREAD_FINISHED];
 }
 
 - (void)initMergeSort {
-    [self initMergeSortArrays];
     NSMutableArray *sortedArray = [NSMutableArray new];
-    NSDate *startTime = [NSDate date];
+    
+    threadLock = [[NSConditionLock alloc] initWithCondition:THREAD_START];
+    NSThread *quickSortThread = [[NSThread alloc] initWithTarget:self selector:@selector(initQuickSort) object:nil];
+    [quickSortThread start];
+    
+    mergeStart = [NSDate date];
     sortedArray = [self mergeSort:unsortedArray];
-    NSLog(@"Merge Sort of %d Elements = %f seconds", ARRAY_SIZE,[[NSDate date] timeIntervalSinceDate:startTime]);
+    mergeTime = [[NSDate date] timeIntervalSinceDate:mergeStart];
+    
+    [threadLock lockWhenCondition:THREAD_FINISHED];
+    [threadLock unlockWithCondition:THREAD_FINISHED];
 }
 
-- (void)initMergeSortArrays {
-    
+- (void)initUnsortedArray {
     // Initialize Arrays
     unsortedArray = [NSMutableArray new];
     
@@ -49,6 +84,35 @@
     }
 }
 
+- (NSMutableArray*)quickSort:(NSMutableArray*)array{
+    NSMutableArray *lessArray = [NSMutableArray new];
+    NSMutableArray *equalArray = [NSMutableArray new];
+    NSMutableArray *greaterArray = [NSMutableArray new];
+    assert([lessArray count] == [equalArray count] == [greaterArray count] == 0);
+    
+    if([array count] > 1) {
+        NSNumber *pivot = [array objectAtIndex:arc4random_uniform((int)[array count])];
+        
+        for(NSNumber *value in array) {
+            if(value < pivot) {
+                [lessArray addObject:value];
+            } else if(value == pivot) {
+                [equalArray addObject:value];
+            } else {
+                [greaterArray addObject:value];
+            }
+        }
+        
+        NSMutableArray *sortedArray = [NSMutableArray new];
+        [sortedArray addObjectsFromArray:[self quickSort:lessArray]];
+        [sortedArray addObjectsFromArray:equalArray];
+        [sortedArray addObjectsFromArray:[self quickSort:greaterArray]];
+        return sortedArray;
+    } else {
+        return array;
+    }
+}
+                 
 - (NSMutableArray*)mergeSort:(NSMutableArray*)array{
     
     NSMutableArray *leftArray = [NSMutableArray new];
